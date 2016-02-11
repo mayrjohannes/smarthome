@@ -25,39 +25,37 @@ import urllib.request
 import locale
 
 encoding = locale.getdefaultlocale()[1]
-logger = logging.getLogger('')
+logger = logging.getLogger('ZAMG')
 
-class Zamg():
+class ZAMG():
 
-    def __init__(self, smarthome, station=11012):
+    def __init__(self, smarthome, station=11012, update_cycle=300):
         logger.info('ZAMG: init plugin')
         self._sh = smarthome
         self._station = int(station)
+        self._update_cycle = int(update_cycle)
+        self._keylist = {}
 
-    def key2index(x):
-        return {
-            'date': 3,
-            'time': 4,
-            'temp': 5,
-            'dewpoint': 6,
-            'humidity': 7,
-            'winddir': 8,
-            'wind': 9,
-            'windpeakdir': 10,
-            'windpeak': 11,
-            'rain': 12,
-            'pressurered': 13,
-            'pressurestat': 14,
-            'sun': 15
-        }[x]
+    def run(self):
+        self.alive = True
+        self._sh.scheduler.add('ZAMG', self._update_values,
+                               prio=5, cycle=self._update_cycle)
+    
+    def stop(self):
+        self.alive = False
+        self._sh.scheduler.remove('ZAMG')
 
-    #def push(self, key):
-    #    urllib.request.urlopen("http://" + self._host + ":" + str(self._port) + "/HandleKey/" + key).read()
-    #    logger.debug("Send {0} to Kathrein with IP {1} at Port {2}".format(key, self._host, self._port))
-    #   time.sleep(0.1)
+    def parse_item(self, item):
+        if 'zamg' in item.conf:
+            logger.debug("ZAMG: weather key {0} is connected to ZAMG station {1}".format(item.conf['zamg'], self._station))
+            key = item.conf['zamg']
+            if not key in self._keylist:
+                self._keylist[key] = {'items': [item], 'logics': []}
+            else:
+                self._keylist[key]['items'].append(item)
+        return None
 
-    def read(self, key):
-        #response = urllib.request.urlopen("http://at-wetter.tk/api/v1/station/" + str(self._station) + "/" + key).read()
+    def _update_values(self):
         key2index = {'date': 3, 'time': 4, 'temp': 5, 'dewpoint': 6, 'humidity': 7,'winddir': 8,'wind': 9,'windpeakdir': 10,'windpeak': 11,'rain': 12,'pressurered': 13,'pressurestat': 14,'sun': 15}
         response = urllib.request.urlopen("http://www.zamg.ac.at/ogd").read()
         lines = response.decode(encoding).split('\n')        
@@ -68,34 +66,14 @@ class Zamg():
             except:
                 sta = 0
             if  sta == self._station:
-                return float(words[key2index[key]].replace(',', '.'))
+                for key in self._keylist:
+                    for item in self._keylist[key]['items']:
+                        val = float(words[key2index[key]].replace(',', '.'))
+                        logger.debug(' {0} {1}'.format(key, val))
+                        item(val, 'ZAMG', ' {0} {1}'.format(key, val))
+        return 
 
-
-
-    def parse_item(self, item):
-        if 'zamg' in item.conf:
-            logger.debug("ZAMG: weather parameter {0} is connected to ZAMG station {1}".format(item.conf['zamg'], self._station))
-            return self.update_item
-        else:
-            return None
-
-    def update_item(self, item, caller=None, source=None, dest=None):
-        val = item()
-        if val:
-            keys = item.conf['zamg']
-        if isinstance(keys, str):
-            keys = [keys]
-        for key in keys:
-            value = self.read(key)
-            logger.debug("ZAMG: item {0} is updated to value {1} ".format(key, value))
-            item(value)
 
     def parse_logic(self, logic):
         pass
-
-    def run(self):
-        self.alive = True
-
-    def stop(self):
-        self.alive = False
 
