@@ -20,42 +20,56 @@
 #########################################################################
 
 import logging
-from pymodbus.client.sync import ModbusTcpClient
-
+#from pymodbus.client.sync import ModbusTcpClient
+from pyModbusTCP.client import ModbusClient
 
 logger = logging.getLogger('')
 
 
-class Plugin():
+class Modbus():
 
-    def __init__(self, smarthome):
+    def __init__(self, smarthome, gateway_ip, gateway_port=502, gateway_id=1):
         self._sh = smarthome
+        #self._client = ModbusTcpClient(gateway_ip,port=gateway_port)
+        self._client = ModbusClient(host=gateway_ip, port=gateway_port, auto_open=True, auto_close=True)
+        self._gateway_id = gateway_id
+        logger.info("Modbus: init plugin")
+        self._client.unit_id(2)
+        self._client.debug(True)
+        if not self._client.is_open():
+            if not self._client.open():
+                logger.error("Modbus: connection to gateway can not be established")
+            else:
+                logger.info("Modbus: connection to gateway established")
+                self._client.close()
+        reg_list = self._client.read_input_registers(1030, 1)
+        logger.info("Modbus: Regs: {0}".format(str(reg_list)))
 
     def run(self):
         self.alive = True
-        # if you want to create child threads, do not make them daemon = True!
-        # They will not shutdown properly. (It's a python bug)
 
     def stop(self):
         self.alive = False
 
     def parse_item(self, item):
-        if 'plugin_attr' in item.conf:
-            logger.debug("parse item: {0}".format(item))
+        if 'gateway_id' in item.conf:
+            gateid = int(item.conf['gateway_id'])
+        else:
+            gateid = 1
+       
+        if gateid != self._gateway_id:
+            return None
+
+        if 'modbus_addr' in item.conf:
+            logger.debug("Modbus: parse item: {0}".format(item))
             return self.update_item
         else:
             return None
 
     def parse_logic(self, logic):
-        if 'xxx' in logic.conf:
-            # self.function(logic['name'])
-            pass
+        pass
 
     def update_item(self, item, caller=None, source=None, dest=None):
         if caller != 'plugin':
             logger.info("update item: {0}".format(item.id()))
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    myplugin = Plugin('smarthome-dummy')
-    myplugin.run()
