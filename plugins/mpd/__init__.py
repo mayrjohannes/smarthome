@@ -85,6 +85,10 @@ class mpd(lib.connection.Client):
             send_to = child.conf['mpd_send']
             if send_to in self._bool_keys:
                 child.add_method_trigger(self._send_bool)
+            elif send_to == 'power':
+                child.add_method_trigger(self._power)
+            elif send_to == 'volume_inc':
+                child.add_method_trigger(self._volume_inc)
             elif send_to == 'volume':
                 child.add_method_trigger(self._send_volume)
             elif send_to == 'value':
@@ -144,6 +148,25 @@ class mpd(lib.connection.Client):
             play.append(url)
         return play
 
+    def _power(self, item, caller=None, source=None, dest=None):
+        if caller != 'MPD':
+            if (int(item())==1):
+                cmd = 'play'
+            else:
+                cmd = 'stop'
+            self._send('{0}'.format(cmd), False)
+
+    def _volume_inc(self, item, caller=None, source=None, dest=None):
+        if caller != 'MPD':
+            #status = self._send('status')
+            #logger.warning('{0}'.format(status))
+            vol = int(self._items['volume']())
+            if (int(item())==1):
+                vol = vol+10
+            else:
+                vol = vol-10
+            self._send('setvol {0}'.format(vol), False)
+
     def _send_volume(self, item, caller=None, source=None, dest=None):
         if caller != 'MPD':
             self._send('setvol {0}'.format(item()), False)
@@ -182,6 +205,7 @@ class mpd(lib.connection.Client):
             return
         status.update({'Album': '', 'Name': '', 'Artist': '', 'AlbumArtist': '', 'Disc': '', 'Track': '', 'Title': '', 'play': False, 'pause': False, 'stop': False})
         status[status['state']] = True  # set only the current state to True
+	
         if 'time' in status:
             status['time'], sep, status['total'] = status['time'].partition(':')
             if 'percent' in self._items:
