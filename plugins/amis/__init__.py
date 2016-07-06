@@ -37,23 +37,21 @@ class AMIS():
         self._sh = smarthome
         self._update_cycle = int(update_cycle)
         self._baudrate = int(baudrate)
-        self._obis_codes = {}
-        #self._serial = serial.Serial(serialport, int(baudrate), bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, timeout=0.1)   
+        self._oms_codes = {"power", "energy", "date", "time"}
+        self._serial = serial.Serial(serialport, int(baudrate), bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, timeout=0.1)   
         self._ack = bytes([229])
         #self._aeskey = binascii.unhexlify('CCB3C1B5E2BFE93502AC23E777DDD5E7')
         self._aeskey = bytes([204, 179, 193, 181, 226, 191, 233, 53, 2, 172, 35, 231, 119, 221, 213, 231])
         self._aesmode = AES.MODE_CBC
-
+        self._power = -1
+        self._energy = -1
+        self._wattlesspower = -1
+        self._wattlessenergy = -1
 
     def run(self):
         self.alive = True
-        #self._sh.scheduler.add('AMIS', self._update_values,
-        #                       prio=5, cycle=self._update_cycle)
+        logger.debug("AMIS: start plugin")
 
-        logger.debug("amis: start plugin")
-
-        logger.debug("{}".format(list(self._aeskey)))
-        
         response = bytes()
         try:
             while self.alive:
@@ -63,46 +61,46 @@ class AMIS():
                 #logger.debug("reading: {}".format(list(response)))
                 
                 if (length > 0 and length == prev_length):
-                   # logger.debug("reading final: {}".format(binascii.hexlify(response)))
-              
                     self._serial.write(self._ack)
                     
-                    if length > 5:
-                        aesIV = bytes([45,76,0,0,0,0,1,14,response[15],response[15],response[15],response[15],response[15],response[15],response[15],response[15]])
-                        ciphertext = response[19:length-2]
-                        
-                        logger.debug("Res: {}\n".format(binascii.hexlify(response)))
-                        logger.debug("IV: {}\n".format(binascii.hexlify(aesIV)))
-                        logger.debug("Key: {}\n".format(binascii.hexlify(self._aeskey)))
-                        decryptor = AES.new(self._aeskey, self._aesmode, IV=aesIV)
-                        
-                        text = decryptor.decrypt(ciphertext)
-                        logger.debug("Orig: {}\n".format(binascii.hexlify(ciphertext)))
-                        logger.debug("Text: {}\n".format(binascii.hexlify(text)))
+                    if length > 50:
+                        try:                    
+                            aesIV = bytes([45,76,0,0,0,0,1,14,response[15],response[15],response[15],response[15],response[15],response[15],response[15],response[15]])
+                            ciphertext = response[19:length-2]
 
-                        #time=unpack('i',text[5:10])
-                        #logger.debug("Time sec: {}".format(time&0b111111))
-                        #logger.debug("Time min: {}".format((time>>6)&0b111111))
-                        #logger.debug("Time hou: {}".format((time>>12)&0b11111))
-                        #logger.debug("Date day: {}".format((time>>17)&0b11111))
-                        #logger.debug("Date mon: {}".format((time>>22)&0b1111))
-                        #logger.debug("Date yea: {}".format((time>>26)&0b111111111111))
-                        logger.debug("A+ in Wh: {}".format(unpack('i',text[12:16])))
-                        logger.debug("A- in Wh: {}".format(unpack('i',text[19:23])))
-                        logger.debug("R+ in varh: {}".format(unpack('i',text[28:32])))
-                        logger.debug("R- in varh: {}".format(unpack('i',text[38:42])))
-                        logger.debug("P+ in W: {}".format(unpack('i',text[44:48])))
-                        logger.debug("P- in W: {}".format(unpack('i',text[51:55])))
-                        logger.debug("Q+ in W: {}".format(unpack('i',text[58:62])))
-                        logger.debug("Q- in W: {}".format(unpack('i',text[66:70])))
-                        logger.debug("€€ in W: {}".format(unpack('i',text[74:78])))
+                            #logger.debug("Res: {}\n".format(binascii.hexlify(response)))
+                            #logger.debug("IV: {}\n".format(binascii.hexlify(aesIV)))
+                            #logger.debug("Key: {}\n".format(binascii.hexlify(self._aeskey)))
+                            decryptor = AES.new(self._aeskey, self._aesmode, IV=aesIV)
+                            text = decryptor.decrypt(ciphertext)
+                            #logger.debug("Orig: {}\n".format(binascii.hexlify(ciphertext)))
+                            #logger.debug("Text: {}\n".format(binascii.hexlify(text)))
 
-
+                            #time=unpack('i',text[6:10])
+                            #logger.debug("Time sec: {}".format(time&0b111111))
+                            #logger.debug("Time min: {}".format((time>>6)&0b111111))
+                            #logger.debug("Time hou: {}".format((time>>12)&0b11111))
+                            #logger.debug("Date day: {}".format((time>>17)&0b11111))
+                            #logger.debug("Date mon: {}".format((time>>22)&0b1111))
+                            #logger.debug("Date yea: {}".format((time>>26)&0b111111111111))
+                            self._energy = (unpack('i', text[12:16])[0])/1000
+                            #logger.debug("A+ in kWh: {}".format(self._energy))
+                            #logger.debug("A- in Wh: {}".format(unpack('i',text[19:23])))
+                            #logger.debug("R+ in kvarh: {}".format(unpack('i',text[28:32])[0]/1000))
+                            #logger.debug("R- in varh: {}".format(unpack('i',text[38:42])))
+                            self._power = unpack('i', text[44:48])[0]
+                            #logger.debug("P+ in W: {}".format(self._power))
+                            #logger.debug("P- in W: {}".format(unpack('i',text[51:55])))
+                            #logger.debug("Q+ in W: {}".format(unpack('i',text[58:62])[0]))
+                            #logger.debug("Q- in W: {}".format(unpack('i',text[66:70])))
+                            #logger.debug("€€ in W: {}".format(unpack('i',text[74:78])))
+                        except Exception as e:
+                            logger.warning("AMIS Encryption Error: {}".format(e))
 
                     response = bytes()
 
         except Exception as e:
-            logger.warning("amis: {0}".format(e))
+            logger.warning("AMIS is stopping cause of: {0}".format(e))
 
     def stop(self):
         self.alive = False
@@ -132,9 +130,11 @@ class AMIS():
 #                    #settings['baudrate'] = baud_capable
 #                    # self._serial.applySettingsDict(settings)
 #                    # Alt3:
-#                    port = self._serial.port self._serial.close() del 
-#                    self._serial logger.debug("dlms: socket closed - 
-#                    creating new one") self._serial = serial.Serial(
+#                    port = self._serial.port
+#                    self._serial.close()
+#                    del self._serial
+#                    logger.debug("dlms: socket closed - creating new one")
+#                    self._serial = serial.Serial(
 #                        port, baud_capable, bytesize=serial.SEVENBITS, parity=serial.PARITY_EVEN, timeout=2)
 #                    logger.debug(
 #                        "dlms: Switching took: {:.2f}s".format(time.time() - switch_start))
@@ -192,11 +192,27 @@ class AMIS():
 #                        "dlms: line={} exception={}".format(line, e))
 
     def parse_item(self, item):
-        if 'amis_obis_code' in item.conf:
-            logger.debug("parse item: {0}".format(item))
-            obis_code = item.conf['amis_obis_code']
-            if not obis_code in self._obis_codes:
-                self._obis_codes[obis_code] = {'items': [item], 'logics': []}
-            else:
-                self._obis_codes[obis_code]['items'].append(item)
-        return None
+        if 'oms' in item.conf:
+            logger.debug("AMIS: Parameter {0} is connected".format(item.conf['oms']))
+            return self.update_item
+        else:
+            return None
+
+    def update_item(self, item, caller=None, source=None, dest=None):
+        if caller != 'AMIS':
+            val = item()
+            if val:
+                #logger.debug("AMIS is parsing item: {0}".format(item))
+                oms_code = item.conf['oms']
+                if oms_code == "power" and self._power>=0:
+                    item(self._power, 'AMIS', ' ', ' ')
+                if oms_code == "energy" and self._energy>=0:
+                    item(self._energy, 'AMIS', ' ', ' ')
+                #if not oms_code in self._oms_codes:
+                #    self._oms_codes[oms_code] = {'items': [item], 'logics': []}
+                #else:
+                #    self._obis_codes[obis_code]['items'].append(item)
+
+    def parse_logic(self, logic):
+        pass
+
