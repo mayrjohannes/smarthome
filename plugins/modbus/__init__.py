@@ -25,14 +25,13 @@ from pyModbusTCP.client import ModbusClient
 
 logger = logging.getLogger('')
 
-
 class Modbus():
 
     def __init__(self, smarthome, gateway_ip, gateway_port=502, gateway_id=1):
         self._sh = smarthome
         #self._client = ModbusTcpClient(gateway_ip,port=gateway_port)
         self._client = ModbusClient(host=gateway_ip, port=gateway_port, auto_open=True, auto_close=True)
-        self._gateway_id = gateway_id
+        self._gateway_id = int(gateway_id)
         logger.info("Modbus: init plugin")
         self._client.unit_id(2)
         self._client.debug(True)
@@ -42,8 +41,6 @@ class Modbus():
             else:
                 logger.info("Modbus: connection to gateway established")
                 self._client.close()
-        reg_list = self._client.read_input_registers(1030, 1)
-        logger.info("Modbus: Regs: {0}".format(str(reg_list)))
 
     def run(self):
         self.alive = True
@@ -53,14 +50,14 @@ class Modbus():
 
     def parse_item(self, item):
         if 'gateway_id' in item.conf:
-            gateid = int(item.conf['gateway_id'])
+            gateid = int(item.conf['modbus_gateway_id'])
         else:
             gateid = 1
-       
+
         if gateid != self._gateway_id:
             return None
 
-        if 'modbus_addr' in item.conf:
+        if 'modbus_register' in item.conf:
             logger.debug("Modbus: parse item: {0}".format(item))
             return self.update_item
         else:
@@ -70,6 +67,12 @@ class Modbus():
         pass
 
     def update_item(self, item, caller=None, source=None, dest=None):
+        logger.info("Modubs: {0}".format(caller))
         if caller != 'plugin':
             logger.info("update item: {0}".format(item.id()))
+            if int(item.conf['modbus_cmd']) == 4:
+                reg_list = self._client.read_input_registers(int(item.conf['modbus_register'])-30001, 1)
+                logger.info("Modbus: Plain value: {}".format(str(reg_list)))
+                phys_value = reg_list[0] / (int(item.conf['modbus_scaling']))# * pow(10, int(item.conf['modbus_decimal']))
+                logger.info("Modbus: Physical value: {0}".format(phys_value))
 
